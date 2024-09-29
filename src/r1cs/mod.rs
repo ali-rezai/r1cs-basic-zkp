@@ -1,14 +1,3 @@
-// y^2 = 4x^3 + 2z + 9
-//
-// Constraints:
-// v1 = y*y
-// v2 = x*x
-// v1 - 2z - 9 = v2*4x
-//
-// Witness:
-// [1, y, x, z, v1, v2]
-//
-
 use bls12_381::{pairing, G1Affine, G1Projective, G2Affine, G2Projective, Scalar};
 
 mod utils;
@@ -22,45 +11,50 @@ pub struct LRO {
 }
 
 impl LRO {
-    pub fn new() -> Self {
+    pub fn new(left: &[Vec<i64>], right: &[Vec<i64>], output: &[Vec<i64>]) -> Self {
+        if left.len() == 0
+            || left[0].len() == 0
+            || left.len() != right.len()
+            || right.len() != output.len()
+            || left
+                .iter()
+                .zip(right.iter())
+                .enumerate()
+                .any(|(index, (l, r))| l.len() != r.len() || r.len() != output[index].len())
+        {
+            panic!("LRO mismatch");
+        }
+
         LRO {
-            left: to_scalar(&[
-                vec![0, 1, 0, 0, 0, 0],
-                vec![0, 0, 1, 0, 0, 0],
-                vec![0, 0, 0, 0, 0, 1],
-            ]),
-            right: to_scalar(&[
-                vec![0, 1, 0, 0, 0, 0],
-                vec![0, 0, 1, 0, 0, 0],
-                vec![0, 0, 4, 0, 0, 0],
-            ]),
-            output: to_scalar(&[
-                vec![0, 0, 0, 0, 1, 0],
-                vec![0, 0, 0, 0, 0, 1],
-                vec![-9, 0, 0, -2, 1, 0],
-            ]),
+            left: to_scalar(left),
+            right: to_scalar(right),
+            output: to_scalar(output),
         }
     }
 
     fn verify_witness_equality(witness_g1: &[G1Affine], witness_g2: &[G2Affine]) {
-        witness_g1
-            .iter()
-            .zip(witness_g2.iter())
-            .for_each(|(g1, g2)| {
-                if pairing(&g1, &G2Affine::generator()) != pairing(&G1Affine::generator(), &g2) {
-                    panic!("Witness mismatch");
-                }
-            });
+        if witness_g1.len() != witness_g2.len()
+            || witness_g1.iter().zip(witness_g2.iter()).any(|(g1, g2)| {
+                pairing(&g1, &G2Affine::generator()) != pairing(&G1Affine::generator(), &g2)
+            })
+        {
+            panic!("Witness mismatch");
+        }
     }
 
     pub fn verify(&self, witness_g1: &[G1Affine], witness_g2: &[G2Affine]) {
         LRO::verify_witness_equality(witness_g1, witness_g2);
 
-        self.left
+        if witness_g1.len() != self.left[0].len() {
+            panic!("Witness LRO mismatch");
+        }
+
+        if self
+            .left
             .iter()
             .zip(self.right.iter())
             .enumerate()
-            .for_each(|(step, (left, right))| {
+            .any(|(step, (left, right))| {
                 let mut g1 = G1Projective::identity();
                 left.iter()
                     .enumerate()
@@ -78,11 +72,11 @@ impl LRO {
                     .enumerate()
                     .for_each(|(index, val)| g1_out += val * witness_g1[index]);
 
-                if pairing(&G1Affine::from(g1), &G2Affine::from(g2))
+                pairing(&G1Affine::from(g1), &G2Affine::from(g2))
                     != pairing(&G1Affine::from(g1_out), &G2Affine::generator())
-                {
-                    panic!("Verification failed");
-                }
-            });
+            })
+        {
+            panic!("Verification failed");
+        }
     }
 }
